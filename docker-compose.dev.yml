@@ -1,0 +1,54 @@
+# Sobe apenas a infra compartilhada para desenvolvimento local.
+# Os serviços Django rodam via "python manage.py runserver" apontando para cá.
+#
+# Uso: docker compose -f docker-compose.dev.yml up -d
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: atlas-postgres-dev
+    environment:
+      POSTGRES_DB: atlas
+      POSTGRES_USER: atlas_user
+      POSTGRES_PASSWORD: atlas_dev_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas_user -d atlas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - atlas-dev
+
+  redis:
+    image: redis:7-alpine
+    container_name: atlas-redis-dev
+    ports:
+      - "6379:6379"
+    networks:
+      - atlas-dev
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: atlas-rabbitmq-dev
+    environment:
+      RABBITMQ_DEFAULT_USER: atlas
+      RABBITMQ_DEFAULT_PASS: atlas_dev_pass
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # Management UI: http://localhost:15672
+    networks:
+      - atlas-dev
+
+volumes:
+  postgres_dev_data:
+
+networks:
+  atlas-dev:
+    name: atlas-dev
+
