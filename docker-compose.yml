@@ -19,17 +19,14 @@ services:
     networks: [atlas-network]
     restart: unless-stopped
 
-  # ─── Serviços ───────────────────────────────────────────────
+  # ─── Serviços (buildados do código-fonte local) ─────────────
+  # Layout do servidor:
+  #   services/auth  services/track  services/scholarship  services/ai
+  #   frontend
   # Todos os serviços Django escutam internamente na porta 8000.
-  # São distinguidos pelo NOME do container, não pela porta.
-  #
-  # As imagens vêm do GHCR (publicadas via CI). Para BUILDAR a partir
-  # do código-fonte local, clone cada repo como pasta irmã deste e
-  # descomente o bloco `build:` correspondente.
 
   auth-service:
-    image: ghcr.io/atlas-ifrn/atlas-auth-service:latest
-    # build: ../atlas-auth-service
+    build: ./services/auth
     container_name: auth-service
     env_file: .env
     environment:
@@ -42,8 +39,7 @@ services:
     restart: unless-stopped
 
   tracks-service:
-    image: ghcr.io/atlas-ifrn/atlas-track-service:latest
-    # build: ../atlas-track-service
+    build: ./services/track
     container_name: tracks-service
     env_file: .env
     environment:
@@ -57,8 +53,7 @@ services:
     restart: unless-stopped
 
   scholarship-service:
-    image: ghcr.io/atlas-ifrn/atlas-scholarship-service:latest
-    # build: ../atlas-scholarship-service
+    build: ./services/scholarship
     container_name: scholarship-service
     env_file: .env
     environment:
@@ -71,8 +66,7 @@ services:
     restart: unless-stopped
 
   ai-service:
-    image: ghcr.io/atlas-ifrn/atlas-ai-service:latest
-    # build: ../atlas-ai-service
+    build: ./services/ai
     container_name: ai-service
     env_file: .env
     environment:
@@ -85,8 +79,7 @@ services:
 
   # ─── Worker Celery (somente tracks possui Celery) ───────────
   celery-worker-tracks:
-    image: ghcr.io/atlas-ifrn/atlas-track-service:latest
-    # build: ../atlas-track-service
+    build: ./services/track
     container_name: celery-worker-tracks
     command: celery -A config worker -l info --concurrency=2
     env_file: .env
@@ -99,15 +92,14 @@ services:
     networks: [atlas-network]
     restart: unless-stopped
 
-  # ─── Frontend (SPA — Vite) ──────────────────────────────────
-  # Só existe Dockerfile.dev no repo (Vite dev server na 5173).
-  # Para produção, recomenda-se criar um Dockerfile de build estático.
+  # ─── Frontend (build estático servido por Nginx na :80) ─────
   frontend:
     build:
-      context: ../atlas-frontend
-      dockerfile: Dockerfile.dev
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+        VITE_ENV_NAME: production
     container_name: frontend
-    env_file: .env
     networks: [atlas-network]
     restart: unless-stopped
 
