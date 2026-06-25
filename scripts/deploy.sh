@@ -1,22 +1,53 @@
 #!/usr/bin/env bash
-# Atlas — deploy no VPS
-# Faz pull das imagens mais recentes e recria os containers
+# Atlas — deploy no servidor
+#
+# As imagens são buildadas a partir do código-fonte local (sem registry).
+# O script atualiza o código (git pull) de cada repositório, rebuilda as
+# imagens e recria os containers.
+#
+# Uso: bash scripts/deploy.sh
 
 set -euo pipefail
 
-COMPOSE_FILE="$(dirname "$0")/../docker-compose.yml"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_DIR"
+
+COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
+
+# Repositórios de código que compõem o build (relativos ao PROJECT_DIR)
+SOURCES=(
+  "."                     # atlas-infra (este repo)
+  "frontend"              # atlas-frontend
+  "services/auth"         # atlas-auth-service
+  "services/track"        # atlas-track-service
+  "services/scholarship"  # atlas-scholarship-service
+  "services/ai"           # atlas-ai-service
+)
 
 echo "[$(date)] Iniciando deploy do Atlas..."
 
-# Pull das imagens mais recentes
-docker compose -f "$COMPOSE_FILE" pull
+# 1. Atualiza o código-fonte de cada repositório (se for um repo git)
+for dir in "${SOURCES[@]}"; do
+  path="$PROJECT_DIR/$dir"
+  if [ -d "$path/.git" ]; then
+    echo "[$(date)] git pull em ${dir}..."
+    git -C "$path" pull --ff-only || echo "  (aviso: pull falhou em ${dir}, seguindo com o código atual)"
+  else
+    echo "[$(date)] ${dir} não é um repo git — pulando atualização."
+  fi
+done
 
-# Recria containers alterados (zero downtime para stateless)
+# 2. Rebuilda as imagens a partir do código local
+echo "[$(date)] Buildando imagens..."
+docker compose -f "$COMPOSE_FILE" build
+
+# 3. Recria os containers alterados
+echo "[$(date)] Subindo containers..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
-# Remove imagens antigas
+# 4. Limpa imagens órfãs
 docker image prune -f
 
 echo "[$(date)] Deploy concluído."
 docker compose -f "$COMPOSE_FILE" ps
-
