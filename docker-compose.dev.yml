@@ -1,13 +1,25 @@
 # Sobe apenas a infra compartilhada para desenvolvimento local.
-# Os serviços Django rodam via "python manage.py runserver" apontando para cá.
+# Os serviços Django/FastAPI rodam fora do container (runserver/uvicorn)
+# apontando para esta infra.
 #
 # Uso: docker compose -f docker-compose.dev.yml up -d
+#
+# Conexão para os serviços (no .env de cada um):
+#   DATABASE_URL=postgres://atlas_user:atlas_dev_pass@localhost:5432/atlas
+#   PGOPTIONS=-c search_path=<auth|tracks|scholarship>,public
+#   REDIS_URL=redis://localhost:6379/0
+#   RABBITMQ_URL=amqp://atlas:atlas_dev_pass@localhost:5672//
+#   OLLAMA_HOST=http://localhost:11434
 
 services:
 
   postgres:
     image: postgres:16-alpine
     container_name: atlas-postgres-dev
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
     environment:
       POSTGRES_DB: atlas
       POSTGRES_USER: atlas_user
@@ -22,16 +34,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks:
-      - atlas-dev
+    networks: [atlas-dev]
 
   redis:
     image: redis:7-alpine
     container_name: atlas-redis-dev
     ports:
       - "6379:6379"
-    networks:
-      - atlas-dev
+    networks: [atlas-dev]
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -42,13 +52,21 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"   # Management UI: http://localhost:15672
-    networks:
-      - atlas-dev
+    networks: [atlas-dev]
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: atlas-ollama-dev
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_dev_data:/root/.ollama
+    networks: [atlas-dev]
 
 volumes:
   postgres_dev_data:
+  ollama_dev_data:
 
 networks:
   atlas-dev:
     name: atlas-dev
-
