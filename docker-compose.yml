@@ -1,6 +1,6 @@
 services:
 
-  # ─── Gateway ────────────────────────────────────────────────
+  # ─── Gateway (único exposto ao mundo) ───────────────────────
   nginx:
     image: nginx:alpine
     container_name: atlas-nginx
@@ -14,109 +14,146 @@ services:
       - auth-service
       - tracks-service
       - scholarship-service
-      - ia-service
-    networks:
-      - atlas-network
+      - ai-service
+      - frontend
+    networks: [atlas-network]
     restart: unless-stopped
 
   # ─── Serviços ───────────────────────────────────────────────
+  # Todos os serviços Django escutam internamente na porta 8000.
+  # São distinguidos pelo NOME do container, não pela porta.
+  #
+  # As imagens vêm do GHCR (publicadas via CI). Para BUILDAR a partir
+  # do código-fonte local, clone cada repo como pasta irmã deste e
+  # descomente o bloco `build:` correspondente.
+
   auth-service:
     image: ghcr.io/atlas-ifrn/atlas-auth-service:latest
+    # build: ../atlas-auth-service
     container_name: auth-service
     env_file: .env
     environment:
-      - DB_SCHEMA=auth
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PGOPTIONS=-c search_path=auth,public
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - atlas-network
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    networks: [atlas-network]
     restart: unless-stopped
 
   tracks-service:
     image: ghcr.io/atlas-ifrn/atlas-track-service:latest
+    # build: ../atlas-track-service
     container_name: tracks-service
     env_file: .env
     environment:
-      - DB_SCHEMA=tracks
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PGOPTIONS=-c search_path=tracks,public
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - atlas-network
+      postgres:  { condition: service_healthy }
+      redis:     { condition: service_healthy }
+      rabbitmq:  { condition: service_healthy }
+    networks: [atlas-network]
     restart: unless-stopped
 
   scholarship-service:
     image: ghcr.io/atlas-ifrn/atlas-scholarship-service:latest
+    # build: ../atlas-scholarship-service
     container_name: scholarship-service
     env_file: .env
     environment:
-      - DB_SCHEMA=scholarship
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PGOPTIONS=-c search_path=scholarship,public
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - atlas-network
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    networks: [atlas-network]
     restart: unless-stopped
 
-  ia-service:
+  ai-service:
     image: ghcr.io/atlas-ifrn/atlas-ai-service:latest
-    container_name: ia-service
+    # build: ../atlas-ai-service
+    container_name: ai-service
     env_file: .env
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:1.5b}
     depends_on:
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - atlas-network
+      ollama: { condition: service_started }
+    networks: [atlas-network]
     restart: unless-stopped
 
-  # ─── Workers Celery ─────────────────────────────────────────
+  # ─── Worker Celery (somente tracks possui Celery) ───────────
   celery-worker-tracks:
     image: ghcr.io/atlas-ifrn/atlas-track-service:latest
+    # build: ../atlas-track-service
     container_name: celery-worker-tracks
-    command: celery -A config worker -l info -Q tracks --concurrency=2
+    command: celery -A config worker -l info --concurrency=2
     env_file: .env
     environment:
-      - DB_SCHEMA=tracks
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PGOPTIONS=-c search_path=tracks,public
     depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - atlas-network
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [atlas-network]
     restart: unless-stopped
 
-  celery-worker-scholarship:
-    image: ghcr.io/atlas-ifrn/atlas-scholarship-service:latest
-    container_name: celery-worker-scholarship
-    command: celery -A config worker -l info -Q scholarship --concurrency=2
+  # ─── Frontend (SPA — Vite) ──────────────────────────────────
+  # Só existe Dockerfile.dev no repo (Vite dev server na 5173).
+  # Para produção, recomenda-se criar um Dockerfile de build estático.
+  frontend:
+    build:
+      context: ../atlas-frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend
     env_file: .env
-    environment:
-      - DB_SCHEMA=scholarship
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - atlas-network
+    networks: [atlas-network]
     restart: unless-stopped
+
+  # ─── LLM local (Ollama) ─────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: atlas-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    networks: [atlas-network]
+    restart: unless-stopped
+    # GPU: se o VPS tiver NVIDIA + nvidia-container-toolkit, descomente:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Baixa o modelo uma vez no startup (o ai-service espera ele existir)
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: atlas-ollama-pull
+    depends_on:
+      ollama: { condition: service_started }
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until ollama list >/dev/null 2>&1; do echo "aguardando ollama..."; sleep 2; done
+        ollama pull ${OLLAMA_MODEL:-qwen2.5-coder:1.5b}
+    networks: [atlas-network]
+    restart: "no"
 
   # ─── Infraestrutura ─────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: atlas-postgres
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
     env_file: .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -126,8 +163,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks:
-      - atlas-network
+    networks: [atlas-network]
     restart: unless-stopped
 
   redis:
@@ -141,8 +177,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks:
-      - atlas-network
+    networks: [atlas-network]
     restart: unless-stopped
 
   rabbitmq:
@@ -156,16 +191,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    networks:
-      - atlas-network
+    networks: [atlas-network]
     restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+  ollama_data:
 
 networks:
   atlas-network:
     name: atlas-network
-
