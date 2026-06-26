@@ -1,12 +1,15 @@
-name: Deploy to production
+name: Deploy infra (full stack) to production
 
+# Mudanças de infraestrutura (compose, nginx, init.sql, scripts) afetam
+# tudo, então este workflow faz um deploy COMPLETO: força a branch main
+# em todos os repositórios do servidor e rebuilda toda a stack.
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
       force_rebuild:
-        description: "Forçar rebuild de todas as imagens"
+        description: "Rebuild sem cache (--no-cache)"
         required: false
         default: "false"
         type: boolean
@@ -17,10 +20,9 @@ concurrency:
 
 jobs:
   deploy:
-    name: SSH deploy → 144.126.151.140
+    name: SSH full deploy → 144.126.151.140
     runs-on: ubuntu-latest
     timeout-minutes: 40
-
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -37,39 +39,28 @@ jobs:
 
             echo ""
             echo "╔══════════════════════════════════════╗"
-            echo "║        Atlas — Deploy iniciado       ║"
+            echo "║   Atlas — Deploy COMPLETO (infra)    ║"
             echo "╚══════════════════════════════════════╝"
-            echo "→ Servidor : $(hostname)"
-            echo "→ Data/hora: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "→ $(hostname) · $(date '+%Y-%m-%d %H:%M:%S')"
             echo ""
 
-            # ── 1. Atualiza código-fonte de cada repositório ──────────
-            echo "[ 1/4 ] Atualizando repositórios..."
-            REPOS=(
-              "."
-              "frontend"
-              "services/auth"
-              "services/track"
-              "services/scholarship"
-              "services/ai"
-            )
+            # Produção roda main: força o checkout dela em todos os repos.
+            echo "[ 1/4 ] Forçando branch main em todos os repositórios..."
+            REPOS=( "." "frontend" "services/auth" "services/track" "services/scholarship" "services/ai" )
             for dir in "${REPOS[@]}"; do
               path="$PROJECT_DIR/$dir"
               if [ -d "$path/.git" ]; then
-                branch=$(git -C "$path" rev-parse --abbrev-ref HEAD)
-                echo "  ↳ $dir  (branch: $branch)"
-                git -C "$path" pull --ff-only 2>&1 | sed 's/^/      /'
+                echo "  ↳ $dir"
+                git -C "$path" fetch origin main 2>&1 | sed 's/^/      /'
+                git -C "$path" checkout -B main origin/main 2>&1 | sed 's/^/      /'
               fi
             done
 
-            # ── 2. Permissão dos scripts ──────────────────────────────
             chmod +x scripts/*.sh 2>/dev/null || true
 
-            # ── 3. Build e restart dos containers ────────────────────
             echo ""
             echo "[ 2/4 ] Buildando imagens..."
             if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-              echo "  (modo force rebuild — sem cache)"
               docker compose build --no-cache
             else
               docker compose build
@@ -83,12 +74,8 @@ jobs:
             echo "[ 4/4 ] Limpando imagens antigas..."
             docker image prune -f
 
-            # ── Status final ─────────────────────────────────────────
             echo ""
-            echo "╔══════════════════════════════════════╗"
-            echo "║           Status dos containers      ║"
-            echo "╚══════════════════════════════════════╝"
+            echo "── Status ──────────────────────────────"
             docker compose ps
-
             echo ""
-            echo "✓ Deploy concluído em $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "✓ Deploy completo em $(date '+%Y-%m-%d %H:%M:%S')"
