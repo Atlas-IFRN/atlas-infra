@@ -6,7 +6,7 @@
 # mais antigos que RETENTION_DAYS.
 #
 # Agendar via cron (ajuste o caminho para o seu servidor):
-#   0 3 * * * /home/development/scripts/backup.sh >> /var/log/atlas-backup.log 2>&1
+#   0 3 * * * /home/production/scripts/backup.sh >> /var/log/atlas-backup.log 2>&1
 
 set -euo pipefail
 
