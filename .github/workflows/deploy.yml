@@ -60,10 +60,28 @@ jobs:
 
             echo ""
             echo "[ 2/4 ] Buildando imagens..."
+            BUILD_FLAGS=""
             if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-              docker compose build --no-cache
-            else
-              docker compose build
+              BUILD_FLAGS="--no-cache"
+            fi
+            # Builda serviço a serviço para que o erro aponte QUAL falhou.
+            BUILD_FALHOU=""
+            for svc in postgres redis rabbitmq ollama auth-service tracks-service scholarship-service ai-service celery-worker-tracks frontend; do
+              echo "----- build: $svc -----"
+              if ! docker compose build $BUILD_FLAGS "$svc"; then
+                echo "!!!!! FALHA no build de: $svc !!!!!"
+                BUILD_FALHOU="$svc"
+                break
+              fi
+            done
+            if [ -n "$BUILD_FALHOU" ]; then
+              echo ""
+              echo "########################################################"
+              echo "# BUILD ABORTADO. Serviço que quebrou: $BUILD_FALHOU"
+              echo "# Rode no servidor para ver o erro completo:"
+              echo "#   cd /home/production && docker compose build $BUILD_FALHOU"
+              echo "########################################################"
+              exit 1
             fi
 
             echo ""
@@ -79,3 +97,4 @@ jobs:
             docker compose ps
             echo ""
             echo "✓ Deploy completo em $(date '+%Y-%m-%d %H:%M:%S')"
+
