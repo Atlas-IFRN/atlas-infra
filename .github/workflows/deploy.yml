@@ -64,9 +64,11 @@ jobs:
             if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
               BUILD_FLAGS="--no-cache"
             fi
-            # Builda serviço a serviço para que o erro aponte QUAL falhou.
+            # Apenas estes serviços têm Dockerfile (build:). Os demais
+            # (postgres, redis, rabbitmq, ollama) usam imagem pronta e
+            # NÃO devem ser passados para `docker compose build`.
             BUILD_FALHOU=""
-            for svc in postgres redis rabbitmq ollama auth-service tracks-service scholarship-service ai-service celery-worker-tracks frontend; do
+            for svc in auth-service tracks-service scholarship-service ai-service celery-worker-tracks frontend; do
               echo "----- build: $svc -----"
               if ! docker compose build $BUILD_FLAGS "$svc"; then
                 echo "!!!!! FALHA no build de: $svc !!!!!"
@@ -97,4 +99,5 @@ jobs:
             docker compose ps
             echo ""
             echo "✓ Deploy completo em $(date '+%Y-%m-%d %H:%M:%S')"
+
 
