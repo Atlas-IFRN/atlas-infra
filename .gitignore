@@ -2,3 +2,6 @@
 nginx/certs/
 *.log
 __pycache__/
+
+services/
+frontend/
