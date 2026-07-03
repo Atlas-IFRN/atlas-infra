@@ -25,10 +25,10 @@ atlas-infra/
 ```
 [Cliente] → Nginx (80/443)
                ├── auth_request → auth-service:8000
-               ├── /api/auth/   → auth-service:8000
-               ├── /api/tracks/ → tracks-service:8001
-               ├── /api/bolsas/ → scholarship-service:8002
-               └── /api/ia/     → ia-service:8003
+               ├── /api/auth/        → auth-service:8000
+               ├── /api/track/       → tracks-service:8001
+               ├── /api/scholarship/ → scholarship-service:8002
+               └── /api/ai/          → ia-service:8003
 ```
 
 | Container | Imagem | Porta interna |
