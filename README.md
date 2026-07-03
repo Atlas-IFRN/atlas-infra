@@ -25,19 +25,19 @@ atlas-infra/
 ```
 [Cliente] → Nginx (80/443)
                ├── auth_request → auth-service:8000
-               ├── /api/auth/   → auth-service:8000
-               ├── /api/tracks/ → tracks-service:8001
-               ├── /api/bolsas/ → scholarship-service:8002
-               └── /api/ia/     → ia-service:8003
+               ├── /api/auth/        → auth-service:8000
+               ├── /api/track/       → tracks-service:8000
+               ├── /api/scholarship/ → scholarship-service:8000
+               └── /api/ai/          → ai-service:8003
 ```
 
 | Container | Imagem | Porta interna |
 |---|---|---|
 | `nginx` | nginx:alpine | 80 / 443 (expostas) |
 | `auth-service` | atlas-auth | 8000 |
-| `tracks-service` | atlas-tracks | 8001 |
-| `scholarship-service` | atlas-scholarship | 8002 |
-| `ia-service` | atlas-ia | 8003 |
+| `tracks-service` | atlas-tracks | 8000 |
+| `scholarship-service` | atlas-scholarship | 8000 |
+| `ai-service` | atlas-ai | 8003 |
 | `celery-worker-tracks` | atlas-tracks | — |
 | `celery-worker-scholarship` | atlas-scholarship | — |
 | `postgres` | postgres:16 | 5432 |
