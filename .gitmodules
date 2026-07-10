@@ -1,0 +1,15 @@
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/Atlas-IFRN/atlas-frontend.git
+[submodule "services/ai"]
+	path = services/ai
+	url = https://github.com/Atlas-IFRN/atlas-ai-service.git
+[submodule "services/auth"]
+	path = services/auth
+	url = https://github.com/Atlas-IFRN/atlas-auth-service.git
+[submodule "services/scholarship"]
+	path = services/scholarship
+	url = https://github.com/Atlas-IFRN/atlas-scholarship-service.git
+[submodule "services/track"]
+	path = services/track
+	url = https://github.com/Atlas-IFRN/atlas-track-service.git
