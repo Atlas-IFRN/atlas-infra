@@ -23,6 +23,7 @@ SOURCES=(
   "services/track"        # atlas-track-service
   "services/scholarship"  # atlas-scholarship-service
   "services/ai"           # atlas-ai-service
+  "services/notification" # atlas-notification-service
 )
 
 echo "[$(date)] Iniciando deploy do Atlas..."
