@@ -4,12 +4,19 @@
 #
 # Uso: docker compose -f docker-compose.dev.yml up -d
 #
+# `name:` fixa um nome de projeto PRÓPRIO (isolado do compose de produção, que
+# usa o nome do diretório `atlas-infra`). Sem isso, como ambos definem serviços
+# `postgres`/`redis`/`rabbitmq`, subir o dev RECRIARIA a infra de produção
+# (mesmo slot de serviço no mesmo projeto), derrubando os bancos de prod.
+#
 # Conexão para os serviços (no .env de cada um):
 #   DATABASE_URL=postgres://atlas_user:atlas_dev_pass@localhost:5432/atlas
-#   PGOPTIONS=-c search_path=<auth|tracks|scholarship>,public
+#   PGOPTIONS=-c search_path=<auth|tracks|scholarship|notification>,public
 #   REDIS_URL=redis://localhost:6379/0
 #   RABBITMQ_URL=amqp://atlas:atlas_dev_pass@localhost:5672//
 #   OLLAMA_HOST=http://localhost:11434
+
+name: atlas-infra-dev
 
 services:
 

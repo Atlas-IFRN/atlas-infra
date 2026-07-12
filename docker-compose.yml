@@ -14,6 +14,7 @@ services:
       - auth-service
       - tracks-service
       - scholarship-service
+      - notification-service
       - ai-service
       - frontend
     networks: [atlas-network]
@@ -35,6 +36,20 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [atlas-network]
+    restart: unless-stopped
+
+  notification-service:
+    build: ./services/notification
+    container_name: notification-service
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PGOPTIONS=-c search_path=notification,public
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
     networks: [atlas-network]
     restart: unless-stopped
 
@@ -77,15 +92,34 @@ services:
     networks: [atlas-network]
     restart: unless-stopped
 
-  # ─── Worker Celery (somente tracks possui Celery) ───────────
+  # ─── Workers Celery (tracks e notification) ─────────────────
+  # Cada worker escuta apenas a SUA fila nomeada (-Q). Como o RabbitMQ é
+  # compartilhado, isso impede que um worker consuma mensagem de outro serviço
+  # (cuja task ele nem conhece). Nenhum worker usa a fila `default`.
   celery-worker-tracks:
     build: ./services/track
     container_name: celery-worker-tracks
-    command: celery -A config worker -l info --concurrency=2
+    command: celery -A config worker -l info -Q tracks --concurrency=2
     env_file: .env
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - PGOPTIONS=-c search_path=tracks,public
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [atlas-network]
+    restart: unless-stopped
+
+  # Consome a fila `notifications` e persiste as notificações publicadas
+  # pelos serviços produtores (auth, scholarship...).
+  celery-worker-notifications:
+    build: ./services/notification
+    container_name: celery-worker-notifications
+    command: celery -A config worker -l info -Q notifications --concurrency=2
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PGOPTIONS=-c search_path=notification,public
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
