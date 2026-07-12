@@ -15,24 +15,35 @@ cd "$PROJECT_DIR"
 
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
 
-# Repositórios de código que compõem o build (relativos ao PROJECT_DIR)
-SOURCES=(
-  "."                     # atlas-infra (este repo)
-  "frontend"              # atlas-frontend
-  "services/auth"         # atlas-auth-service
-  "services/track"        # atlas-track-service
-  "services/scholarship"  # atlas-scholarship-service
-  "services/ai"           # atlas-ai-service
+# Org no GitHub (repos públicos, clonados por HTTPS)
+GITHUB_ORG="Atlas-IFRN"
+
+# Mapa path->repo dos códigos-fonte que compõem o build (relativos ao
+# PROJECT_DIR). O repo vazio (".") é o próprio atlas-infra: só atualiza (pull),
+# nunca clona. Os demais são clonados automaticamente se ainda não existirem.
+declare -A SOURCES=(
+  ["."]=""                                    # atlas-infra (este repo)
+  ["frontend"]="atlas-frontend"
+  ["services/auth"]="atlas-auth-service"
+  ["services/track"]="atlas-track-service"
+  ["services/scholarship"]="atlas-scholarship-service"
+  ["services/ai"]="atlas-ai-service"
+  ["services/notification"]="atlas-notification-service"
 )
 
 echo "[$(date)] Iniciando deploy do Atlas..."
 
-# 1. Atualiza o código-fonte de cada repositório (se for um repo git)
-for dir in "${SOURCES[@]}"; do
+# 1. Atualiza (ou clona, se ainda não existir) o código-fonte de cada repositório
+for dir in "${!SOURCES[@]}"; do
   path="$PROJECT_DIR/$dir"
+  repo="${SOURCES[$dir]}"
   if [ -d "$path/.git" ]; then
     echo "[$(date)] git pull em ${dir}..."
     git -C "$path" pull --ff-only || echo "  (aviso: pull falhou em ${dir}, seguindo com o código atual)"
+  elif [ -n "$repo" ]; then
+    echo "[$(date)] ${dir} ausente — clonando ${repo}..."
+    mkdir -p "$(dirname "$path")"
+    git clone "https://github.com/${GITHUB_ORG}/${repo}.git" "$path"
   else
     echo "[$(date)] ${dir} não é um repo git — pulando atualização."
   fi
