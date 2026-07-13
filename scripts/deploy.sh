@@ -29,6 +29,7 @@ declare -A SOURCES=(
   ["services/scholarship"]="atlas-scholarship-service"
   ["services/ai"]="atlas-ai-service"
   ["services/notification"]="atlas-notification-service"
+  ["services/feed"]="atlas-feed-service"
 )
 
 echo "[$(date)] Iniciando deploy do Atlas..."
