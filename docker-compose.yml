@@ -61,6 +61,11 @@ services:
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - PGOPTIONS=-c search_path=feed,public
+    # Imagens enviadas nos posts (MEDIA_ROOT=/app/static/uploads) num volume
+    # nomeado — sobrevivem a rebuild/recriação do container. Sem isto, os
+    # uploads viviam na camada efêmera do container e sumiam a cada build.
+    volumes:
+      - feed_uploads:/app/static/uploads
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -240,6 +245,7 @@ volumes:
   redis_data:
   rabbitmq_data:
   ollama_data:
+  feed_uploads:
 
 networks:
   atlas-network:
