@@ -58,7 +58,17 @@ docker compose -f "$COMPOSE_FILE" build
 echo "[$(date)] Subindo containers..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
-# 4. Limpa imagens órfãs
+# 4. Recarrega o nginx para re-resolver os upstreams.
+# Os serviços recriados no passo 3 ganham IPs novos na rede docker. Como o nginx
+# resolve os nomes de upstream no carregamento da config (upstream estático), sem
+# recarregar ele continua apontando para os IPs ANTIGOS e todo o gateway passa a
+# responder 502. O reload é gracioso (não derruba conexões); se o nginx ainda não
+# estiver rodando (ex.: primeiro deploy), o `up -d nginx` sobe o container.
+echo "[$(date)] Recarregando nginx (re-resolve upstreams)..."
+docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload \
+  || docker compose -f "$COMPOSE_FILE" up -d nginx
+
+# 5. Limpa imagens órfãs
 docker image prune -f
 
 echo "[$(date)] Deploy concluído."
