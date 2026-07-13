@@ -14,6 +14,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
+NGINX_CONF="$PROJECT_DIR/nginx/nginx.conf"
+
+# Hash da config do nginx ANTES dos pulls, para detectar se ela muda neste
+# deploy (ver passo 4). Arquivo ausente → string vazia.
+nginx_conf_before="$(md5sum "$NGINX_CONF" 2>/dev/null | awk '{print $1}')"
 
 # Org no GitHub (repos públicos, clonados por HTTPS)
 GITHUB_ORG="Atlas-IFRN"
@@ -58,15 +63,22 @@ docker compose -f "$COMPOSE_FILE" build
 echo "[$(date)] Subindo containers..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
-# 4. Recarrega o nginx para re-resolver os upstreams.
-# Os serviços recriados no passo 3 ganham IPs novos na rede docker. Como o nginx
-# resolve os nomes de upstream no carregamento da config (upstream estático), sem
-# recarregar ele continua apontando para os IPs ANTIGOS e todo o gateway passa a
-# responder 502. O reload é gracioso (não derruba conexões); se o nginx ainda não
-# estiver rodando (ex.: primeiro deploy), o `up -d nginx` sobe o container.
-echo "[$(date)] Recarregando nginx (re-resolve upstreams)..."
-docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload \
-  || docker compose -f "$COMPOSE_FILE" up -d nginx
+# 4. Recria o nginx SOMENTE se a config dele mudou neste deploy.
+# Por que não mexer no nginx a cada deploy:
+#  - IP novo dos serviços recriados NÃO exige ação: o nginx usa resolução
+#    dinâmica (resolver + variável no proxy_pass) e re-resolve os upstreams
+#    sozinho em ~10s.
+# Por que RECRIAR (e não `nginx -s reload`) quando a config muda:
+#  - O compose faz bind-mount do arquivo nginx.conf e o git TROCA O INODE ao
+#    atualizá-lo. O container fica preso ao inode antigo, então `reload` recarrega
+#    a config VELHA. Só `--force-recreate` re-mapeia o inode e aplica a nova.
+nginx_conf_after="$(md5sum "$NGINX_CONF" 2>/dev/null | awk '{print $1}')"
+if [ "$nginx_conf_before" != "$nginx_conf_after" ]; then
+  echo "[$(date)] nginx.conf mudou — recriando o container nginx para aplicar a nova config..."
+  docker compose -f "$COMPOSE_FILE" up -d --force-recreate nginx
+else
+  echo "[$(date)] nginx.conf inalterado — nginx dispensado (upstreams se re-resolvem sozinhos)."
+fi
 
 # 5. Limpa imagens órfãs
 docker image prune -f
