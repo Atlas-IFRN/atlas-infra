@@ -71,6 +71,22 @@ docker compose -f docker-compose.dev.yml up -d
 
 > Cada serviço backend pode ser rodado individualmente via `python manage.py runserver` apontando para essa infra local.
 
+### Modo demonstração
+
+Sobe a stack de produção com as **ferramentas de demo** ligadas (para apresentar funcionalidades restritas a docentes), **sem** ligar o Django DEBUG:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d --build
+```
+
+Isso liga a flag `ATLAS_DEMO_TOOLS` no `auth-service` (expõe `POST /api/auth/debug/set-role/`, que alterna o papel do usuário logado) e builda o `frontend` com `VITE_DEMO_TOOLS=true` (mostra o switch "Modo professor" no menu do perfil). `DJANGO_DEBUG` continua `False`.
+
+> ⚠️ Mesmo sem DEBUG, o endpoint deixa qualquer usuário autenticado virar professor. Use só durante a apresentação e volte à stack normal ao terminar:
+>
+> ```bash
+> docker compose -f docker-compose.yml up -d --build auth-service frontend
+> ```
+
 ## Variáveis de ambiente
 
 Copie `.env.example` para `.env` e preencha os valores. Nunca commite o `.env` real.
