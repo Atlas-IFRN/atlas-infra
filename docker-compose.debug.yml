@@ -1,0 +1,36 @@
+# ============================================================
+# Override de DEMONSTRAÇÃO
+# ============================================================
+# Habilita as "ferramentas de demo" SOBRE a stack de produção, para apresentar
+# funcionalidades restritas a docentes — SEM ligar o Django DEBUG.
+#
+# Uso (sobe/atualiza a stack já com a demo ligada):
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d --build
+#
+# O que muda:
+#   - auth-service: liga a flag ATLAS_DEMO_TOOLS → expõe
+#     POST /api/auth/debug/set-role/ (alterna o papel do usuário logado).
+#   - frontend: builda com VITE_DEMO_TOOLS=true → mostra o switch
+#     "Modo professor" no menu do perfil.
+#
+# O que NÃO muda:
+#   - DJANGO_DEBUG continua False em todos os serviços. As páginas de erro,
+#     stack traces e configs do Django seguem ocultos — é isto que torna
+#     seguro rodar isto num servidor exposto.
+#   - feed-service e demais serviços ficam intactos.
+#
+# ⚠️ Mesmo sem DEBUG, isto expõe um endpoint que deixa qualquer usuário
+#    autenticado virar professor. Use apenas durante a apresentação e volte
+#    para a stack normal ao terminar:
+#      docker compose -f docker-compose.yml up -d --build auth-service frontend
+# ============================================================
+
+services:
+  auth-service:
+    environment:
+      - ATLAS_DEMO_TOOLS=True
+
+  frontend:
+    build:
+      args:
+        VITE_DEMO_TOOLS: "true"
