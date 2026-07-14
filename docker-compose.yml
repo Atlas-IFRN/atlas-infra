@@ -61,6 +61,13 @@ services:
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - PGOPTIONS=-c search_path=feed,public
+      # As imagens dos posts sao servidas sob /api/feed/static/ (MEDIA_URL dentro
+      # de STATIC_URL). Com runserver + DEBUG=True o Django recusa iniciar
+      # ("runserver can't serve media if MEDIA_URL is within STATIC_URL") e o
+      # feed cai (502). DEBUG=False resolve e e o correto para producao; sobrepoe
+      # o DJANGO_DEBUG do .env so para este servico. Uploads seguem servidos pela
+      # rota de MEDIA em config/urls.py (independe de DEBUG).
+      - DJANGO_DEBUG=False
     # Imagens enviadas nos posts (MEDIA_ROOT=/app/static/uploads) num volume
     # nomeado — sobrevivem a rebuild/recriação do container. Sem isto, os
     # uploads viviam na camada efêmera do container e sumiam a cada build.
