@@ -1,113 +1,88 @@
-# atlas-infra
+# Atlas · Infra 🏗️
 
-Infraestrutura centralizada do **Atlas** — orquestração de todos os serviços via Docker Compose, configuração do Nginx, scripts de deploy e backup.
+> Parte do **Projeto Atlas** — plataforma acadêmica desenvolvida para o **IFRN Campus Pau dos Ferros** como Projeto Integrador de Sistemas Distribuídos. O Atlas conecta alunos a trilhas de conhecimento e bolsas, com avaliação automática de código por IA.
 
-## Estrutura
+Repositório **central de infraestrutura**: orquestra todos os serviços do Atlas via Docker Compose, define o **gateway Nginx**, inicializa o banco e provê os scripts de **deploy** e **backup**. É o ponto de entrada para subir a plataforma inteira.
 
-```
-atlas-infra/
-├── docker-compose.yml          # Compose canônico de produção (10 containers)
-├── docker-compose.dev.yml      # Overrides para desenvolvimento local
-├── .env.example                # Template de variáveis de ambiente (sem secrets)
-├── nginx/
-│   └── nginx.conf              # Gateway principal com auth_request
-├── postgres/
-│   └── init.sql                # Inicialização dos schemas auth/tracks/scholarship
-└── scripts/
-    ├── backup.sh               # Backup automático via pg_dump
-    └── deploy.sh               # Script de deploy no VPS
-```
+## O que este repositório contém
 
-## Arquitetura
+- **`docker-compose.yml`** (+ `dev` e `debug`) — orquestração de toda a stack.
+- **`nginx/nginx.conf`** — o gateway: único container exposto ao mundo (80/443).
+- **`postgres/init.sql`** — cria o banco único `atlas` e os schemas isolados.
+- **`scripts/deploy.sh`** — clona/atualiza os repositórios de código, rebuilda as imagens e recria os containers.
+- **`scripts/backup.sh`** — backup automático do PostgreSQL via `pg_dump` (comprimido, com retenção).
 
-10 containers Docker orquestrados via Compose. O **Nginx** é o único ponto de entrada externo — valida tokens via `auth_request` antes de repassar qualquer requisição.
+## Arquitetura em containers
 
-```
-[Cliente] → Nginx (80/443)
-               ├── auth_request → auth-service:8000
-               ├── /api/auth/        → auth-service:8000
-               ├── /api/track/       → tracks-service:8000
-               ├── /api/scholarship/ → scholarship-service:8000
-               └── /api/ai/          → ai-service:8003
-```
+| Container | Papel |
+|---|---|
+| **nginx** | Gateway — **único** exposto ao mundo (80/443), TLS, rate limit e `auth_request` |
+| auth-service | Identidade (SUAP/JWT), gunicorn `:8000` |
+| tracks-service | Trilhas e desafios, gunicorn `:8000` |
+| scholarship-service | Bolsas e talentos, gunicorn `:8000` |
+| feed-service | Feed institucional, gunicorn `:8000` |
+| notification-service | Notificações, gunicorn `:8000` |
+| ai-service | Avaliação por IA (FastAPI) `:8003` |
+| celery-worker-tracks | Worker da fila `tracks` |
+| celery-worker-notifications | Worker da fila `notifications` |
+| frontend | SPA React servida por Nginx |
+| ollama | LLM local para o ai-service |
+| postgres | PostgreSQL 16 — banco único, schemas isolados |
+| redis | Cache, sessões e rate limit |
+| rabbitmq | Mensageria (Celery, `rabbitmq:3-management`) |
 
-| Container | Imagem | Porta interna |
-|---|---|---|
-| `nginx` | nginx:alpine | 80 / 443 (expostas) |
-| `auth-service` | atlas-auth | 8000 |
-| `tracks-service` | atlas-tracks | 8000 |
-| `scholarship-service` | atlas-scholarship | 8000 |
-| `ai-service` | atlas-ai | 8003 |
-| `celery-worker-tracks` | atlas-tracks | — |
-| `celery-worker-scholarship` | atlas-scholarship | — |
-| `postgres` | postgres:16 | 5432 |
-| `redis` | redis:7 | 6379 |
-| `rabbitmq` | rabbitmq:3-management | 5672 / 15672 |
+## O gateway Nginx
 
-## Como usar
+- **Borda autenticada:** a diretiva `auth_request` chama `auth-service/api/auth/internal/validate/` para validar o JWT **antes** de repassar a requisição, e injeta `X-User-Id` / `X-User-Role`. Rotas públicas (login, callback, `docs/`, `schema/`) ficam fora do `auth_request` para evitar deadlock.
+- **Roteamento por namespace:** `/api/auth/`, `/api/track/`, `/api/scholarship/`, `/api/feed/`, `/api/notifications/`, `/api/ai/` → serviço correspondente.
+- **Resolução dinâmica de upstream:** o nome do serviço é resolvido em tempo de request (padrão resiliente a recriações de container).
+- **Rate limiting:** zonas dedicadas para API e busca.
 
-### Produção (VPS)
+## Banco de dados
+
+PostgreSQL 16, **banco único `atlas`** com schemas isolados: `auth`, `tracks`, `scholarship`, `notification`, `feed`. Cada serviço acessa apenas o seu schema via `PGOPTIONS=-c search_path=<schema>,public` (definido no compose). Nenhum serviço consulta o schema de outro — dados cruzados passam pela API HTTP interna. Extensões `uuid-ossp` e `pg_stat_statements` habilitadas na inicialização.
+
+## Ecossistema
+
+| Repositório | Responsabilidade |
+|---|---|
+| atlas-auth-service | Identidade: SUAP OAuth2, JWT, perfis de usuário |
+| atlas-track-service | Trilhas, módulos, conteúdos, progresso e submissão de desafios |
+| atlas-scholarship-service | Bolsas, candidaturas, banco de talentos e notas |
+| atlas-feed-service | Feed institucional: posts, comentários, curtidas e banners |
+| atlas-notification-service | Notificações (consumidor central via RabbitMQ) |
+| atlas-ai-service | Avaliação de repositórios GitHub por LLM local (Ollama) |
+| atlas-frontend | SPA React + TypeScript (aluno e professor) |
+| **atlas-infra** | **Docker Compose, Nginx (gateway), Postgres/Redis/RabbitMQ, deploy e backup** |
+| atlas-observability | Prometheus + Grafana (métricas dos serviços) |
+
+## Subindo a plataforma
 
 ```bash
-# Clonar e configurar
-git clone https://github.com/Atlas-IFRN/atlas-infra ~/atlas
-cd ~/atlas
+# Desenvolvimento (infra compartilhada + serviços)
 cp .env.example .env
-# editar .env com as variáveis reais
-
-# Subir todos os serviços
-docker compose up -d
-
-# Verificar status
-docker compose ps
-```
-
-### Desenvolvimento local
-
-```bash
-# Sobe apenas a infra compartilhada (postgres, redis, rabbitmq, nginx)
 docker compose -f docker-compose.dev.yml up -d
-```
 
-> Cada serviço backend pode ser rodado individualmente via `python manage.py runserver` apontando para essa infra local.
-
-### Modo demonstração
-
-Sobe a stack de produção com as **ferramentas de demo** ligadas (para apresentar funcionalidades restritas a docentes), **sem** ligar o Django DEBUG:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d --build
-```
-
-Isso liga a flag `ATLAS_DEMO_TOOLS` no `auth-service` (expõe `POST /api/auth/debug/set-role/`, que alterna o papel do usuário logado) e builda o `frontend` com `VITE_DEMO_TOOLS=true` (mostra o switch "Modo professor" no menu do perfil). `DJANGO_DEBUG` continua `False`.
-
-> ⚠️ Mesmo sem DEBUG, o endpoint deixa qualquer usuário autenticado virar professor. Use só durante a apresentação e volte à stack normal ao terminar:
->
-> ```bash
-> docker compose -f docker-compose.yml up -d --build auth-service frontend
-> ```
-
-## Variáveis de ambiente
-
-Copie `.env.example` para `.env` e preencha os valores. Nunca commite o `.env` real.
-
-## Backup
-
-O script `scripts/backup.sh` executa `pg_dump` e salva em `/backups/` com timestamp. Configure um cron no VPS:
-
-```bash
-0 3 * * * /home/ubuntu/atlas/scripts/backup.sh
-```
-
-## Deploy
-
-```bash
+# Produção (no servidor) — atualiza código, rebuilda e recria os containers
 bash scripts/deploy.sh
 ```
 
-O script faz pull das imagens mais recentes e recria os containers com zero downtime para os serviços stateless.
+## Backup
 
----
+`scripts/backup.sh` gera um dump comprimido (`atlas_<timestamp>.sql.gz`) do banco completo e remove backups mais antigos que `RETENTION_DAYS`. Agende via cron:
 
-> Os `Dockerfile` de cada serviço permanecem em seus respectivos repositórios. Apenas a orquestração vive aqui.
+```cron
+0 3 * * * /caminho/atlas-infra/scripts/backup.sh >> /var/log/atlas-backup.log 2>&1
+```
 
+## Variáveis de ambiente
+
+Baseie seu `.env` no `.env.example`. Inclui credenciais do Postgres, `DJANGO_SECRET_KEY` (compartilhada entre os serviços para assinar/validar o JWT), URLs de Redis/RabbitMQ, credenciais do SUAP e configuração do Ollama.
+
+## Observabilidade
+
+As métricas dos serviços são coletadas pela stack separada **[atlas-observability](https://github.com/Atlas-IFRN/atlas-observability)** (Prometheus + Grafana).
+
+## CI/CD
+
+Workflows de GitHub Actions em `.github/workflows/` para apoio ao deploy.
